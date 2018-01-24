@@ -2,7 +2,28 @@ use "buffered"
 use "collections"
 
 primitive Data
+
 primitive Headers
+  // https://tools.ietf.org/html/rfc7541#appendix-A Static Headers Table Definition
+  fun authority(): U8 => indexed(1)
+  fun method_get(): U8 => indexed(2)
+  fun method_post(): U8 => indexed(3)
+  fun path_root(): U8 => indexed(4)
+  fun path_index(): U8 => indexed(5)
+  fun scheme_http(): U8 => indexed(6)
+  fun scheme_https(): U8 => indexed(7)
+  fun status_200(): U8 => indexed(8)
+  fun status_204(): U8 => indexed(8)
+  fun status_206(): U8 => indexed(8)
+  fun status_304(): U8 => indexed(8)
+  fun status_400(): U8 => indexed(8)
+  fun status_404(): U8 => indexed(8)
+  fun status_500(): U8 => indexed(8)
+
+  // https://tools.ietf.org/html/rfc7541#section-6.1 Indexed Header Field Representation
+  fun indexed(index: U8): U8 =>
+    (index and (0xff >> 1)) or (0x1 << 7)
+
 primitive Priority
 primitive RstStream
 primitive Settings
