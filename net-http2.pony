@@ -1,16 +1,20 @@
 use "net"
-use "ssl"
 use "files"
 use "crypto"
 use "buffered"
+use "collections"
+
+use "ssl"
+use "frames"
 
 
 actor Main
   new create(env: Env) =>
+      let decoded = HPackDecoder.decode([0xf1; 0xe3; 0xc2; 0xe5; 0xf2; 0x3a; 0x6b; 0xa0; 0xab; 0x90; 0xf4; 0xff])
+      env.out.print(decoded)
     try
       let auth = env.root as AmbientAuth
       TCPListener(auth, recover ServerListenNotify(env.out, recover get_sslctx(env.root as AmbientAuth)? end) end, "", "8080")
-      env.out.print("Server running on :8080")
     else
       env.out.print("Error setting up server")
     end
@@ -23,7 +27,7 @@ actor Main
       FilePath(auth, "./certs/key.pem")?)?
     ctx.set_client_verify(false)
     ctx.set_server_verify(false)
-    ctx.set_alpn_protos(recover iso ["h2"; "html/1.1"; "html/1.0"; "html"] end)
+    ctx.set_alpn_protos(recover iso ["h2"/*; "html/1.1"; "html/1.0"; "html"*/] end)
     consume ctx
 
 
@@ -34,60 +38,50 @@ class ServerListenNotify is TCPListenNotify
     out = os
     sslctx = sslctx'
 
+  fun ref listening(listener: TCPListener ref) =>
+    out.print("Bound to " + NetAddressUtil.ip_port_str(listener.local_address()))
+
+  fun ref not_listening(listen: TCPListener ref) =>
+    out.print("Error binding to address")
+    None
+
   fun ref connected(listen: TCPListener ref): TCPConnectionNotify iso^? =>
+    let addr = listen.local_address().addr
+
     try
       let ssl = sslctx.server()?
       recover SSLConnection(recover ServerSession(out) end, consume ssl) end
     else
+      out.print("Error setting up SSL listener")
       error
     end
-  
-  fun ref not_listening(listen: TCPListener ref) =>
-    None
 
-primitive HTTP
-primitive H2
-type HTTPMode is (HTTP|H2)
 
 class ServerSession is TCPConnectionNotify
   let out: OutStream
   let reader: Reader
+  let dynamic_headers: List[(String,String)] = List[(String, String)]
 
   // eg. first 24 bits prefix + settings etc
   var frameHeadOffset: (USize | None) = 24
-  var http_mode:HTTPMode = H2
 
   new create(os: OutStream) =>
-    os.print("[ NEW SESSION ]")
     out = os
     reader = Reader
 
   fun ref accepted(con: TCPConnection ref) =>
+    out.print("Connection from " + NetAddressUtil.ip_port_str(con.remote_address()))
     None
   
   fun ref connect_failed(con: TCPConnection ref) =>
+    out.print("Connection from " + NetAddressUtil.ip_port_str(con.remote_address()) + " failed!")
     None
   
   fun ref received(con: TCPConnection ref, data: Array[U8] iso, times: USize):Bool =>
-    let arr: Array[U8] val = consume data
-
-    out.print("GOT: " + String.from_array(arr))
-    // append to local buffer
-    reader.append(arr)
-
-    match http_mode
-    | H2 => try_handle_frame(con)
-    | HTTP => try_upgrade()
-    end
-
+    reader.append(consume data)
+    try_handle_frame(con)
     true
-  
-  fun ref try_upgrade() =>
-    let preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
-    try
-      error
-    end
-  
+
   fun ref try_handle_frame(con: TCPConnection ref) =>
     if has_frameheader() then
       match get_frameheader()
@@ -99,40 +93,49 @@ class ServerSession is TCPConnectionNotify
           out.print("Stream ID: " + header.stream_identifier.string())
           out.print("--- END FRAME HEADER ---\n")
 
-          try
-            let payload: Array[U8] val = reader.block(header.length)?
-            let payload_string = String.from_array(payload)
-            frameHeadOffset = 0
-            out.print("Payload: \n" + ToHexString(payload))
-            out.print("Payload: \n" + payload_string + "\n")
-          end
+          let payload: Array[U8] val = try reader.block(header.length)? else recover val Array[U8] end end
+          let payload_string = String.from_array(payload)
+          frameHeadOffset = 0
 
           match header.frametype
           | Settings => None
           | WindowUpdate => None
           | Headers =>
+            let frame = HeadersFrame(header, dynamic_headers)
+              .> parse_fields(payload, out)
+            out.print("Dyn: " + dynamic_headers.size().string())
+            out.print("Finished reading Headers: " + frame.fields().size().string())
+            for (k,v) in frame.fields().values() do
+              out.print("HEADER: " + k + " => " + v)
+            end
             // TODO: send settings frame back befor doing data
             try
               let send_set = recover val FrameHeader.from_values(0, Settings, 0, 0).to_bytes()? end
-              out.print(ToHexString(send_set))
               con.write(send_set)
 
               let send_buf= recover iso FrameHeader.from_values(1, Headers, 4, header.stream_identifier).to_bytes()? end
-              send_buf.push(Headers.status_200())
+              match HeaderField.get_index(":status", U16(200), None)
+              | let i:U8 =>
+                send_buf.push(HeaderField.indexed(i))
+              | None =>
+                out.print("Error getting index for :status header!")
+                send_buf.push(HeaderField.indexed(14))
+              end
 
               let data_content_str = """
                 <html><head><title>Hello, HTML2</title></head><body><h1>HELLO WORLD!</h1><p><em>which is h2</em></p></body></html>
               """
 
-              let data_buf= recover iso FrameHeader.from_values(data_content_str.size(),Data,1,1).to_bytes()? end
+              let data_buf= recover iso FrameHeader.from_values(data_content_str.size(),Data,1,header.stream_identifier).to_bytes()? end
               data_buf.append(data_content_str)
 
               send_buf.append(consume data_buf)
 
               let final_buf = consume val send_buf
-              out.print("Sending: " + ToHexString(final_buf))
               con.write(final_buf)
             end
+          else
+            out.print("Error handling Headers frame")
           end
 
           try_handle_frame(con)
