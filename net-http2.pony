@@ -10,8 +10,6 @@ use "frames"
 
 actor Main
   new create(env: Env) =>
-      let decoded = HPackDecoder.decode([0xf1; 0xe3; 0xc2; 0xe5; 0xf2; 0x3a; 0x6b; 0xa0; 0xab; 0x90; 0xf4; 0xff])
-      env.out.print(decoded)
     try
       let auth = env.root as AmbientAuth
       TCPListener(auth, recover ServerListenNotify(env.out, recover get_sslctx(env.root as AmbientAuth)? end) end, "", "8080")
