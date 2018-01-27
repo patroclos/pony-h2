@@ -26,6 +26,9 @@ primitive _Flags
   // toggles exclusive flag(E), stream dependency and weight
   fun priority():U8 => 1 << 5
 
+primitive Huffman
+type StringEncoding is (Huffman|None)
+
 class HeadersFrame
   let _fields: List[(String, String)]
   let _header: FrameHeader val
@@ -77,7 +80,8 @@ class HeadersFrame
   fun ref _get_header(index: U8): (String|(String,String)|None) =>
     try
       if USize.from[U8](index) > HeaderField.static_headers().size() then 
-        _dynamic_table.apply(USize.from[U8](index) - HeaderField.num_static_headers())?
+        let adjusted_index = USize.from[U8](index) - HeaderField.num_static_headers() - 2
+        _dynamic_table.apply(adjusted_index)?
       else HeaderField.get_data(index) end
     end
 
@@ -90,10 +94,13 @@ class HeadersFrame
       if is_indexed then
         let index = header_field_begin and (0xff >> 1)
 
-        match _get_header(index)//HeaderField.get_data(index)
+        match _get_header(index)
         | let name: String => _set_header(name, "")
         | (let name: String, let value: String) => _set_header(name, value)
-        | None => out.print("Error accessing indexed header at: " + index.string());error
+        | None => 
+          out.print("Error accessing indexed header at: " + index.string())
+          out.print("Num Static: " + HeaderField.num_static_headers().string() + " Num Dynamic: " + _dynamic_table.size().string())
+          error
         end
       else // not indexed
         // literal types: with indexing, without indexing, never indexed
@@ -103,14 +110,17 @@ class HeadersFrame
         let name_index = (header_field_begin and (consume name_index_mask))
         let is_name_indexed = name_index != 0
         let name = if is_name_indexed then
-            match _get_header(name_index)//HeaderField.get_data(name_index)
+            out.print("Matching")
+            match _get_header(name_index)
                 | let name: String => name
                 | (let name: String, let value: String) => name
                 | None => out.print("Error accessing indexed name at: " + name_index.string());error
             end
           else
+            out.print("Reading")
             _read_string(rb, out)?
           end
+          out.print(name)
 
 
         if incremental_index then
@@ -128,22 +138,38 @@ class HeadersFrame
       error
     end
 
-  
   fun _read_string(rb: Reader, out: OutStream):String? =>
     try
-      let str_meta = rb.u8()?
-      let is_huffman = (str_meta and (1<<7)) != 0
-      let length = USize.from[U8](str_meta and (0xff >> 1))
+      //let str_meta = rb.u8()?
+      //let is_huffman = (str_meta and (1<<7)) != 0
+      //let length = USize.from[U8](str_meta and (0xff >> 1))
+
+      (let encoding: StringEncoding, let length: USize) = _read_string_meta(rb)?
 
       var raw = try rb.block(length)? else out.print("cant read string block"); error end
 
-      if is_huffman then
-        HPackDecoder.decode(consume raw)
-      else
-        String.from_array(consume raw)
+      match encoding
+      | Huffman => HPackDecoder.decode(consume raw)
+      | None => String.from_array(consume raw)
       end
-
     else
       out.print("Error reading string")
       error
     end
+  
+  fun _read_string_meta(rb: Reader): (StringEncoding, USize)? =>
+    let meta = rb.u8()?
+    let encoding = if ((meta and (1<<7)) != 0) then Huffman else None end
+    var length = USize.from[U8](meta and (0xff >> 1))
+
+    if length < (0xff >> 1) then return (encoding, length) end
+
+    var m:USize = 0
+    var b:U8=0
+    repeat
+      b = rb.u8()?
+      length = length + (USize.from[U8](b and (0xff >> 1)) * (USize(1)<<m))
+      m = m + 7
+    until (b and (0xff>>1)) != (0xff>>1) end
+
+    (encoding, length)
