@@ -168,6 +168,6 @@ class HeadersFrame
       b = rb.u8()?
       value = value + (USize.from[U8](b and (0xff >> 1)) * (USize(1) << m))
       m = m + 7
-    until (b and (0xff >> 1)) != (0xff >> 1) end
+    until (b and (1 << 7)) != (1 << 7) end
 
     value
