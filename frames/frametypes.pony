@@ -142,8 +142,8 @@ primitive HeaderField
       "www-authenticate"
     ]
   
-  fun get_data(index: U8): ((String|(String, String))|None) =>
-    try static_headers().apply(USize.from[U8](index - 1))? else None end
+  fun get_data(index: USize): ((String|(String, String))|None) =>
+    try static_headers().apply(index - 1)? else None end
 
 primitive Headers
 primitive Priority

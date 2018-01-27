@@ -99,10 +99,8 @@ class ServerSession is TCPConnectionNotify
           | Settings => None
           | WindowUpdate => None
           | Headers =>
-            let frame = HeadersFrame(header, dynamic_headers)
-              .> parse_fields(payload, out)
-            out.print("Dyn: " + dynamic_headers.size().string())
-            out.print("Finished reading Headers: " + frame.fields().size().string())
+            let frame = HeadersFrame(header, dynamic_headers, out)
+              .> parse_fields(payload)
             for (k,v) in frame.fields().values() do
               out.print("HEADER: " + k + " => " + v)
             end
@@ -140,7 +138,7 @@ class ServerSession is TCPConnectionNotify
       end
     end
 
-  
+
   fun box has_frameheader(): Bool =>
     match frameHeadOffset
     | None => false
@@ -148,7 +146,7 @@ class ServerSession is TCPConnectionNotify
       let bufSize = reader.size()
       bufSize >= (offset + 9)
     end
-  
+
   fun ref get_frameheader(): (FrameHeader val | None) =>
     try
       match frameHeadOffset
