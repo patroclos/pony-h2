@@ -1,7 +1,7 @@
 use "buffered"
 use "collections"
 
-primitive _HPACKCode
+primitive _HuffmanCode
   fun symbol_data(): Array[(U32, U8)] =>
     [as (U32, U8):
       (0x1ff8, 13)
@@ -263,22 +263,13 @@ primitive _HPACKCode
       (0x3fffffff, 30)
     ]
 
-// TODO use leaf structure
-struct _Leaf
-  var right: (_Leaf|None) = None
-  var left: (_Leaf|None) = None
-  var value: (U8|None)
-
-  new create(value': (U8|None)) =>
-    value=value'
-
-primitive HPackDecoder
+primitive HuffmanCode
   fun decode(data: Array[U8] val):String val =>
     let rv = recover iso String(0) end
     let read = Reader
     read.append(data)
 
-    let decode_data = _HPACKCode.symbol_data()
+    let decode_data = _HuffmanCode.symbol_data()
 
     try
       var current:U32 = 0
@@ -286,11 +277,9 @@ primitive HPackDecoder
 
       while true do
         let byte = read.u8()?
-        //out.print(byte.string() + " (" + current.string() + ":" + num_bits.string() + ")")
 
         for bit in [as U8: 7;6;5;4;3;2;1;0].values() do
           let v = byte and (1<<bit)
-          //out.print(byte.string() + "[" + bit.string() + "] = " + v.string())
 
           current = (current << 1) or U32.from[U8](if v != 0 then 1 else 0 end)
           num_bits = num_bits + 1
@@ -307,3 +296,47 @@ primitive HPackDecoder
     end
 
     consume val rv
+
+primitive Huffman
+type StringEncoding is (Huffman | None )
+
+primitive HPack
+  fun read_string(reader: Reader ref): String? =>
+    try
+      (let encoding: StringEncoding, let length: USize) = _read_string_meta(reader)?
+      let raw = recover val reader.block(length)? end
+
+      match encoding
+      | Huffman => HuffmanCode.decode(consume raw)
+      | None => String.from_array(raw)
+      end
+    else
+      error
+    end
+  
+  fun read_integer(reader: Reader ref, start_val: U8, start_bit_width:U8 = 8): USize? =>
+    var value: USize = USize.from[U8](start_val)
+
+    if start_val < 1.shl(start_bit_width).sub(1) then return value end
+
+    var m: USize = 0
+    var b: U8 = 0
+
+    repeat
+      b = try reader.u8()? else error end
+      value = value + USize.from[U8](b and 127).mul(USize(1).shl(m))
+      m = m + 7
+    until b.op_and(128) != 128 end
+
+    value
+
+
+  
+  fun _read_string_meta(reader: Reader ref): (StringEncoding, USize)? =>
+    try
+      let meta = reader.u8()?
+      let encoding: StringEncoding = if meta.op_and(128) != 0 then Huffman else None end
+      let length: USize = read_integer(reader, meta.op_and(127), 7)?
+
+      (encoding, length)
+    else error end

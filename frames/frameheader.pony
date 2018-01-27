@@ -24,6 +24,12 @@ class FrameHeader
     flags = flags'
     stream_identifier = streamid
   
+  new copy(from: FrameHeader box) =>
+    length = from.length
+    frametype = from.frametype
+    flags = from.flags
+    stream_identifier = from.stream_identifier
+  
   fun to_bytes(): Array[U8]? =>
     let wb = Writer
     wb.u32_be((U32.from[USize](length) << 8) or (U32.from[U8](FrameTypes.code(frametype))))

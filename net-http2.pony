@@ -91,7 +91,7 @@ class ServerSession is TCPConnectionNotify
           out.print("Stream ID: " + header.stream_identifier.string())
           out.print("--- END FRAME HEADER ---\n")
 
-          let payload: Array[U8] val = try reader.block(header.length)? else recover val Array[U8] end end
+          let payload: Array[U8] val = try reader.block(header.length)? else out.print("could not read payload"); return end
           let payload_string = String.from_array(payload)
           frameHeadOffset = 0
 

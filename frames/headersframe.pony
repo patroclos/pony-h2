@@ -26,9 +26,6 @@ primitive _Flags
   // toggles exclusive flag(E), stream dependency and weight
   fun priority():U8 => 1 << 5
 
-primitive Huffman
-type StringEncoding is (Huffman|None)
-
 class HeadersFrame
   let _fields: List[(String, String)]
   let _header: FrameHeader val
@@ -93,7 +90,7 @@ class HeadersFrame
       let is_indexed = (header_field_begin and (1<<7)) != 0
 
       if is_indexed then
-        let index = _read_integer(rb, header_field_begin and (0xff >> 1), 7)?
+        let index = HPack.read_integer(rb, header_field_begin and (0xff >> 1), 7)?
 
         match _get_header(index)
         | let name: String => _set_header(name, "")
@@ -107,7 +104,7 @@ class HeadersFrame
         let incremental_index = (header_field_begin and (1<<6)) != 0
 
         let name_index_mask: U8 val = recover if incremental_index then U8(0b111111) else U8(0b1111) end end
-        let name_index = _read_integer(rb, header_field_begin and (consume name_index_mask), if incremental_index then 6 else 4 end)?
+        let name_index = HPack.read_integer(rb, header_field_begin and (consume name_index_mask), if incremental_index then 6 else 4 end)?
         let is_name_indexed = name_index != 0
         let name = if is_name_indexed then
             match _get_header(name_index)
@@ -116,16 +113,17 @@ class HeadersFrame
                 | None => out.print("Error accessing indexed name at: " + name_index.string());error
             end
           else
-            _read_string(rb)?
+            //_read_string(rb)?
+            HPack.read_string(rb)?
           end
 
 
         if incremental_index then
-          let value = try _read_string(rb)? else out.print("Error reading " + name); error end
+          let value = try HPack.read_string(rb)? else out.print("Error reading " + name); error end
           _set_header(name, value)
           _dynamic_table.unshift((name,value))
         else
-          let value = try _read_string(rb)? else out.print("Error reading " + name); error end
+          let value = try HPack.read_string(rb)? else out.print("Error reading " + name); error end
           _set_header(name,value)
         end
       end
@@ -134,40 +132,3 @@ class HeadersFrame
       out.print("Error decoding headers")
       error
     end
-
-  fun _read_string(rb: Reader):String? =>
-    try
-      (let encoding: StringEncoding, let length: USize) = _read_string_meta(rb)?
-
-      var raw = try rb.block(length)? else out.print("cant read string block"); error end
-
-      match encoding
-      | Huffman => HPackDecoder.decode(consume raw)
-      | None => String.from_array(consume raw)
-      end
-    else
-      out.print("Error reading string")
-      error
-    end
-  
-  fun _read_string_meta(rb: Reader): (StringEncoding, USize)? =>
-    let meta = rb.u8()?
-    let encoding = if ((meta and (1<<7)) != 0) then Huffman else None end
-
-    let length = _read_integer(rb, meta and (0xff >> 1), 7)?
-
-    (encoding, length)
-
-  fun _read_integer(rb: Reader, start_val: U8, start_bit_width:U8): USize? =>
-    if start_val < ((1 << start_bit_width) - 1) then return USize.from[U8](start_val) end
-
-    var value:USize = USize.from[U8](start_val)
-    var m:USize=0
-    var b:U8=0
-    repeat
-      b = rb.u8()?
-      value = value + (USize.from[U8](b and (0xff >> 1)) * (USize(1) << m))
-      m = m + 7
-    until (b and (1 << 7)) != (1 << 7) end
-
-    value
