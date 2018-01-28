@@ -16,40 +16,39 @@ use "crypto"
  +---------------------------------------------------------------+
 */
 
-primitive _Flags
-  fun end_stream():U8 => 1
-  fun end_headers():U8 => 1 << 2
 
-  // toggles pad length and padding fields
-  fun padded():U8 => 1 << 3
-
-  // toggles exclusive flag(E), stream dependency and weight
-  fun priority():U8 => 1 << 5
-
-class HeadersFrame
-  let _fields: List[(String, String)]
+class HeadersFrame is Frame
   let _header: FrameHeader val
-  let _dynamic_table: List[(String, String)] ref
-  let out: OutStream
+  let _payload: FramePayload val
+  let _fields: List[(String, String)]
+  let _dynamic_table: List[(String, String)] box
+  let _new_dynamic: List[(String, String)] = List[(String, String)]
 
-  new create(header': FrameHeader val, dynamic_table: List[(String, String)] ref, os: OutStream) =>
-    out = os
-    _fields = List[(String, String)]
+  new create(header': FrameHeader val, payload': FramePayload val, dynamic_table: List[(String, String)] box) =>
     _header = header'
+    _payload = payload'
+    _fields = List[(String, String)]
     _dynamic_table = dynamic_table
+    _parse_fields()
   
   fun header(): FrameHeader val =>
     _header
   
+  fun payload(): FramePayload val =>
+    _payload
+  
+  fun new_headers(): List[(String, String)] box =>
+    _new_dynamic
+  
   fun fields(): List[(String, String)] box =>
     _fields
   
-  fun ref parse_fields(payload: Array[U8] val) =>
+  fun ref _parse_fields() =>
     let rb: Reader ref = Reader
-    rb.append(payload)
+    rb.append(_payload)
 
-    let is_padded = (_header.flags and _Flags.padded()) != 0
-    let has_priority = (_header.flags and _Flags.priority()) != 0
+    let is_padded = _header.has_flags(FrameHeaderFlags.headers_Padded())
+    let has_priority = _header.has_flags(FrameHeaderFlags.headers_Priority())
 
     try
       let pad_length = if is_padded then rb.u8()? else 0 end
@@ -64,13 +63,10 @@ class HeadersFrame
           _read_field(rb)?
           if is_padded then rb.skip(USize.from[U8](pad_length))? end
         else 
-          out.print("Error reading Headers")
           break 
         end
       end
     end
-
-    try out.print(ToHexString(rb.block(rb.size())?)) else out.print("Error printing remainder") end
   
   fun ref _set_header(name: String, value: String) =>
     _fields.push((name, value))
@@ -79,7 +75,11 @@ class HeadersFrame
     try
       if index > HeaderField.static_headers().size() then
         let adjusted_index = index - HeaderField.num_static_headers() - 1
-        _dynamic_table.apply(adjusted_index)?
+        if adjusted_index < _new_dynamic.size() then 
+          _dynamic_table.apply(adjusted_index)?
+        else
+          _new_dynamic.apply(adjusted_index)?
+        end
       else HeaderField.get_data(index) end
     end
 
@@ -96,7 +96,6 @@ class HeadersFrame
         | let name: String => _set_header(name, "")
         | (let name: String, let value: String) => _set_header(name, value)
         | None => 
-          out.print("Error accessing indexed header at: " + index.string())
           error
         end
       else // not indexed
@@ -110,25 +109,23 @@ class HeadersFrame
             match _get_header(name_index)
                 | let name: String => name
                 | (let name: String, let value: String) => name
-                | None => out.print("Error accessing indexed name at: " + name_index.string());error
+                | None => error
             end
           else
-            //_read_string(rb)?
             HPack.read_string(rb)?
           end
 
 
         if incremental_index then
-          let value = try HPack.read_string(rb)? else out.print("Error reading " + name); error end
+          let value = try HPack.read_string(rb)? else error end
           _set_header(name, value)
-          _dynamic_table.unshift((name,value))
+          _new_dynamic.unshift((name,value))
         else
-          let value = try HPack.read_string(rb)? else out.print("Error reading " + name); error end
+          let value = try HPack.read_string(rb)? else error end
           _set_header(name,value)
         end
       end
 
     else // try failed
-      out.print("Error decoding headers")
       error
     end

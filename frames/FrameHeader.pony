@@ -1,5 +1,13 @@
 use "buffered"
 
+primitive FrameHeaderFlags
+  fun headers_EndStream(): U8 => 1
+  fun headers_EndHeaders(): U8 => 1 << 2
+  fun headers_Padded(): U8 => 1 << 3
+  fun headers_Priority(): U8 => 1 << 5
+
+  fun flags_match(flags: U8, matches: U8):Bool => (flags and matches) == matches
+
 class FrameHeader
   let length: USize
   let frametype: FrameType
@@ -29,6 +37,9 @@ class FrameHeader
     frametype = from.frametype
     flags = from.flags
     stream_identifier = from.stream_identifier
+  
+  fun has_flags(flags': U8): Bool =>
+    FrameHeaderFlags.flags_match(flags, flags')
   
   fun to_bytes(): Array[U8]? =>
     let wb = Writer

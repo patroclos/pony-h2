@@ -25,7 +25,7 @@ actor Main
       FilePath(auth, "./certs/key.pem")?)?
     ctx.set_client_verify(false)
     ctx.set_server_verify(false)
-    ctx.set_alpn_protos(recover iso ["h2"/*; "html/1.1"; "html/1.0"; "html"*/] end)
+    ctx.set_alpn_protos(recover iso ["h2"] end)
     consume ctx
 
 
@@ -57,29 +57,81 @@ class ServerListenNotify is TCPListenNotify
 
 class ServerSession is TCPConnectionNotify
   let out: OutStream
-  let reader: Reader
-  let dynamic_headers: List[(String,String)] = List[(String, String)]
+  let _frame_stream_parser: FrameStreamParser = FrameStreamParser
+  let _dyn_headers: List[(String,String)] = List[(String, String)]
 
-  // eg. first 24 bits prefix + settings etc
-  var frameHeadOffset: (USize | None) = 24
+  let _streams: Map[U32, FrameStreamProcessor tag] = Map[U32, FrameStreamProcessor]
+  var _scheduler: (FrameScheduler | None) = None
 
   new create(os: OutStream) =>
     out = os
-    reader = Reader
 
   fun ref accepted(con: TCPConnection ref) =>
     out.print("Connection from " + NetAddressUtil.ip_port_str(con.remote_address()))
+    _scheduler = FrameScheduler(recover con end)
     None
   
   fun ref connect_failed(con: TCPConnection ref) =>
     out.print("Connection from " + NetAddressUtil.ip_port_str(con.remote_address()) + " failed!")
+    _scheduler = None
     None
   
   fun ref received(con: TCPConnection ref, data: Array[U8] iso, times: USize):Bool =>
-    reader.append(consume data)
-    try_handle_frame(con)
+    _frame_stream_parser.append(consume data)
+    _handle_pending_frames()
     true
+  
+  fun ref _handle_pending_frames() =>
+    try
+      while _frame_stream_parser.has_next() do
+        (let head: FrameHeader val, let payload: Array[U8] val) = _frame_stream_parser.next()?
+        //_dump_frameheader(head)
+        _handle_frame(head, payload)
+      end
+    else
+      out.print("error handiling package iterator")
+    end
+  
+  fun ref _handle_frame(head: FrameHeader val, payload: Array[U8] val) =>
+    let streamid = head.stream_identifier
+    if (streamid != 0) and (_streams.contains(streamid) == false) then
+      out.print("Creating Stream Processor for " + streamid.string())
+      try
+        match _scheduler
+        | let sched: FrameScheduler tag => 
+          _streams.insert(streamid, FrameStreamProcessor(sched, streamid, out))?
+        else error
+        end
+      else out.print("Failed, No scheduler set up yet!")
+      end
+    end
 
+    match head.frametype
+    | Settings => None
+    | WindowUpdate => None
+    | Headers =>
+      let fields: List[(String, String)] iso = recover iso List[(String, String)] end
+      for f in _dyn_headers.values() do fields.push(f) end
+      let frame: HeadersFrame val = recover HeadersFrame(head, payload, consume box fields) end
+      for f in frame.new_headers().values() do _dyn_headers.unshift(f) end
+
+
+      try
+        _streams.apply(streamid)?.process(frame)
+      end
+    end
+
+  
+  fun _dump_frameheader(header: FrameHeader box) =>
+    out.print("\n--- BEGIN FRAME ---")
+    out.print("Length: " + header.length.string())
+    out.print("FrameType: " + FrameTypes.name(header.frametype))
+    out.print("Flags: " + header.flags.string())
+    out.print("Stream ID: " + header.stream_identifier.string())
+    out.print("--- END FRAME ---\n")
+
+
+/*
   fun ref try_handle_frame(con: TCPConnection ref) =>
     if has_frameheader() then
       match get_frameheader()
@@ -91,15 +143,11 @@ class ServerSession is TCPConnectionNotify
           out.print("Stream ID: " + header.stream_identifier.string())
           out.print("--- END FRAME HEADER ---\n")
 
-          let payload: Array[U8] val = try reader.block(header.length)? else out.print("could not read payload"); return end
-          let payload_string = String.from_array(payload)
-          frameHeadOffset = 0
-
           match header.frametype
           | Settings => None
           | WindowUpdate => None
           | Headers =>
-            let frame = HeadersFrame(header, dynamic_headers, out)
+            let frame = HeadersFrame(header, _dyn_headers, out)
               .> parse_fields(payload)
             for (k,v) in frame.fields().values() do
               out.print("HEADER: " + k + " => " + v)
@@ -137,23 +185,4 @@ class ServerSession is TCPConnectionNotify
           try_handle_frame(con)
       end
     end
-
-
-  fun box has_frameheader(): Bool =>
-    match frameHeadOffset
-    | None => false
-    | let offset: USize box =>
-      let bufSize = reader.size()
-      bufSize >= (offset + 9)
-    end
-
-  fun ref get_frameheader(): (FrameHeader val | None) =>
-    try
-      match frameHeadOffset
-      | let offset: USize =>
-        reader.skip(offset)?
-        let bytes = reader.block(9)?
-        frameHeadOffset = None
-        recover FrameHeader(consume bytes)? end 
-      end
-    end
+*/
