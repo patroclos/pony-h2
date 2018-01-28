@@ -22,7 +22,7 @@ int proto_cb(SSL *ssl,
     {
       if (memcmp(supported[isup], proto, protolen) == 0)
       {
-        printf("PROTO MATCH: %.*s\n", protolen, proto);
+        //printf("PROTO MATCH: %.*s\n", protolen, proto);
         *out = proto;
         *outlen = protolen;
         return SSL_TLSEXT_ERR_OK;
@@ -41,6 +41,6 @@ void server_use_protos(SSL_CTX *ctx, const unsigned char **protos, const size_t 
   args[0] = protos;
   args[1] = _len;
 
-  printf("**DEBUG** Setting SSL alpn callback for ssl=%p\n", ctx);
+  //printf("**DEBUG** Setting SSL alpn callback for ssl=%p\n", ctx);
   SSL_CTX_set_alpn_select_cb(ctx, proto_cb, args);
 }

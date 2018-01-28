@@ -52,5 +52,3 @@ actor FrameStreamProcessor
     end
 
   
-/*
-*/
