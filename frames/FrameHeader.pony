@@ -41,7 +41,7 @@ class FrameHeader
   fun has_flags(flags': U8): Bool =>
     FrameHeaderFlags.flags_match(flags, flags')
   
-  fun to_bytes(): Array[U8]? =>
+  fun to_bytes(): Array[U8] =>
     let wb = Writer
     wb.u32_be((U32.from[USize](length) << 8) or (U32.from[U8](FrameTypes.code(frametype))))
     wb.u8(flags)
@@ -50,7 +50,12 @@ class FrameHeader
     let buf = Array[U8]
 
     for a in arrs.values() do
-      for v in (a as Array[U8] val).values() do
+      let values = match a
+        | let s: Array[U8] val => s.values()
+        | let s: String val => s.values()
+      end
+
+      for v in values do
         buf.push(v)
       end
     end

@@ -21,6 +21,8 @@ actor FrameStreamProcessor
     _frames = Array[Frame]
     _framewriter = consume writer
     _out = out
+
+    _framewriter.write(FrameBuilder.settings())
   
   be _send(frame: Frame val) =>
     _framewriter.write(frame)
@@ -35,14 +37,44 @@ actor FrameStreamProcessor
         _out.print("Evaluating " + headerfields.size().string() + " Headers")
       end
     end
-    _send(frame) // TODO do something reasonable, like actually responding
   
   fun _evaluate_headers() =>
-    try
-      let method = _get_header(":method") as String
-      let path = _get_header(":path") as String
+    let method = _get_header(":method")
+    let path = _get_header(":path")
 
-      _out.print("#" + _streamid.string() +" " + method.upper() + " " + path)
+    let template = """
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>{0}</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+      </head>
+
+      <body>
+        <div class="container">
+          <h1>{1}</h1>
+          <p>A sample page delivered by pony-h2</p>
+        </div>
+      </body>
+    </html>
+    """.string()
+    .> replace("{0}", "pony-h2 sample")
+    .> replace("{1}", "Hello, World!")
+
+    //let headers = List.from([as (String, String): ("content-type", "text/html"); ("content-length", template.size().string())])
+
+    let data: Array[U8] val = recover val Array[U8] .> append(consume template) end
+
+    _send(FrameBuilder.header(8, true, _streamid))
+    _send(FrameBuilder.data(data, _streamid))
+
+    match (method, path)
+    | (let m: String, let p: String) => _out.print("#" + _streamid.string() +" " + m.upper() + " " + p)
+    else
+      for kv in headerfields.values() do
+        (let n: String, let v: String) = kv
+        _out.print("Header: " + n + " => " + v)
+      end
     end
   
   fun _get_header(name: String): (String|None) =>

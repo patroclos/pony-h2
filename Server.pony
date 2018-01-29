@@ -1,33 +1,9 @@
 use "net"
-use "files"
-use "crypto"
 use "buffered"
 use "collections"
 
 use "ssl"
 use "frames"
-
-
-actor Main
-  new create(env: Env) =>
-    try
-      let auth = env.root as AmbientAuth
-      TCPListener(auth, recover ServerListenNotify(env.out, recover get_sslctx(env.root as AmbientAuth)? end) end, "", "8080")
-    else
-      env.out.print("Error setting up server")
-    end
-  
-  fun get_sslctx(auth: AmbientAuth): SSLContext? =>
-    let ctx = recover iso SSLContext end
-    ctx.set_authority(FilePath(auth, "./certs/cert.pem")?)?
-    ctx.set_cert(
-      FilePath(auth, "./certs/cert.pem")?,
-      FilePath(auth, "./certs/key.pem")?)?
-    ctx.set_client_verify(false)
-    ctx.set_server_verify(false)
-    ctx.set_alpn_protos(recover iso ["h2"] end)
-    consume ctx
-
 
 class ServerListenNotify is TCPListenNotify
   let out: OutStream
