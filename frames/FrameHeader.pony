@@ -1,6 +1,8 @@
 use "buffered"
 
 primitive FrameHeaderFlags
+  fun data_EndStream(): U8 => 1
+
   fun headers_EndStream(): U8 => 1
   fun headers_EndHeaders(): U8 => 1 << 2
   fun headers_Padded(): U8 => 1 << 3

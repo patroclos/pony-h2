@@ -10,11 +10,11 @@ type Method is (GET | POST | PATCH | DELETE)
 type Status is U16
 
 class val Request
-  var method: Method
-  var headers: List[(String, String)] val
-  var body: Seq[U8] val
+  let method: Method
+  let headers: List[(String, String)] val
+  let body: Array[U8] val
 
-  new create(method': Method, headers': List[(String, String)] val, body': Seq[U8] val) =>
+  new val create(method': Method, headers': List[(String, String)] val, body': Array[U8] val) =>
     method = method'
     headers = headers'
     body = body'
@@ -22,9 +22,9 @@ class val Request
 class val Response
   var status: (Status | None) = None
   var headers: List[(String, String)] val = recover List[(String, String)] end
-  var body: Seq[U8] val = recover val Array[U8] end
+  var body: Array[U8] val = recover val Array[U8] end
 
-  fun ref apply(status': (Status|None), headers': List[(String, String)] val, body': Seq[U8] val) =>
+  fun ref apply(status': (Status|None), headers': List[(String, String)] val, body': Array[U8] val) =>
     status = status'
     headers = headers'
     body = body'

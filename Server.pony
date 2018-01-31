@@ -85,6 +85,9 @@ class ServerSession is TCPConnectionNotify
     match head.frametype
     | Settings => None
     | WindowUpdate => None
+    | Data =>
+    let frame: DataFrame val = recover DataFrame(head, payload) end
+    try _streams.apply(streamid)?.process(frame) end
     | Headers =>
       let fields: List[(String, String)] iso = recover iso List[(String, String)] end
       for f in _dyn_headers.values() do fields.push(f) end
