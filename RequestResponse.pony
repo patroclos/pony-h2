@@ -1,44 +1,48 @@
 use "collections"
 use "frames"
 
-primitive GET
-primitive POST
-primitive PATCH
-primitive DELETE
-type Method is (GET | POST | PATCH | DELETE)
-
 type Status is U16
 
-class val Request
-  let method: Method
+class box Request
   let headers: List[(String, String)] val
   let body: Array[U8] val
 
-  new val create(method': Method, headers': List[(String, String)] val, body': Array[U8] val) =>
-    method = method'
-    headers = headers'
-    body = body'
-
-class val Response
-  var status: (Status | None) = None
-  var headers: List[(String, String)] val = recover List[(String, String)] end
-  var body: Array[U8] val = recover val Array[U8] end
-
-  fun ref apply(status': (Status|None), headers': List[(String, String)] val, body': Array[U8] val) =>
-    status = status'
+  new val create(headers': List[(String, String)] val, body': Array[U8] val) =>
     headers = headers'
     body = body'
   
-  fun set_status(code: Status): Response =>
-    Response .> apply(code, headers, body)
+  fun header(name: String): (String | None) =>
+    for hf in headers.values() do
+      if hf._1.eq(name) then return hf._2 end
+    end
 
-interface Middleware
-  fun on_request(req: Request iso, res: Response iso): (Request iso^, Response iso^)
+class box Response
+  var headers: List[(String, Stringable)] val = recover List[(String, Stringable)] end
+  var body: Array[U8] val = recover val Array[U8] end
+  let _stream: U32
 
-interface RequestHandler
-  fun on_request(req: Request iso, res: Response iso): Response iso^
+  new create(stream: U32) =>
+    _stream = stream
+  
+  fun box apply(status: Status): Array[Frame] val =>
+    let ext_headers = recover val
+      List[(String, Stringable)]
+      .> push((":status", status))
+      .> push(("content-length", body.size()))
+      .> append(headers)
+    end
+    let headerFrame = FrameBuilder.header_list(ext_headers, true, _stream)
+    let dataFrame = FrameBuilder.data(body, _stream)
 
+    recover val [as Frame: headerFrame; dataFrame] end
 
+//interface Middleware
+//  fun on_request(req: Request iso, res: Response iso): (Request iso^, Response iso^)
+
+interface val RequestHandler
+  fun on_request(req: Request val, res: Response trn): (Response val, Status)
+
+/*
 actor SomewhereOverTheRainbow
   let _writer: FrameWriter
   let _stream: U32
@@ -66,3 +70,4 @@ actor SomewhereOverTheRainbow
     // TODO build frames for headers and data and enqueue those
     None
 
+*/

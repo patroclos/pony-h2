@@ -13,17 +13,18 @@ actor FrameStreamProcessor
   let _streamid: U32
   let _frames: Seq[Frame]
   let _framewriter: FrameWriter tag
-  let _out: OutStream
+  let _request_handler: RequestHandler val
 
   var _headerfields: List[(String, String)] trn = recover trn List[(String, String)] end
   var _data: Array[U8] trn = recover trn Array[U8] end
 
-  new create(writer: FrameWriter tag, streamid: U32, out: OutStream) =>
+  new create(writer: FrameWriter tag, streamid: U32, request_handler: RequestHandler val) =>
     _streamid = streamid
     _frames = Array[Frame]
     _framewriter = consume writer
-    _out = out
+    _request_handler = request_handler
 
+    // initial settings frame
     _framewriter.write(FrameBuilder.settings())
   
   be _send(frame: Frame val) =>
@@ -41,9 +42,7 @@ actor FrameStreamProcessor
       for f in headers.fields().values() do _headerfields.push(f) end
 
       if headers.has_flags(FrameHeaderFlags.headers_EndHeaders()) then
-        if wants_data() then
-          _out.print("Waiting for data before processing request")
-        else
+        if wants_data() == false then
           _flush_request()
         end
       end
@@ -57,25 +56,17 @@ actor FrameStreamProcessor
     end
   
   fun ref _flush_request() =>
-    let method = _get_header(":method")
-    let path = _get_header(":path")
-
     let hcopy = _headerfields = recover trn List[(String, String)] end
     let dcopy = _data = recover trn Array[U8] end
 
+    let req = Request.create(consume val hcopy, consume val dcopy)
+    (let response: Response val, let status: Status) = _request_handler.on_request(req, recover trn Response(_streamid) end)
+
+    for frame in response(status).values() do
+      _send(frame)
+    end
+
 /*
-    let req = match method
-    | let m: String => 
-    Request.create(GET, consume val hcopy, consume val dcopy)
-    else None
-    end
-
-    match req
-    | let r: Request val =>
-    _out.print("Request: " + String.from_array(r.body))
-    end
-    */
-
     let template = """
     <!DOCTYPE html>
     <html>
@@ -95,27 +86,39 @@ actor FrameStreamProcessor
     .> replace("{0}", "pony-h2 sample")
     .> replace("{1}", "Hello, World!")
 
+    let response = Response(_streamid)
+    response.headers = recover val
+      List[(String, Stringable)]
+      .> push(("x-powered-by", "pony-h2"))
+      .> push(("set-cookie", "bullshit=yes"))
+    end
+
+    response.body = (consume val template).array()
+
+    for frame in response(Status(200)).values() do
+      _send(frame)
+    end
+    */
+
+/*
     let data: Array[U8] val = recover val Array[U8] .> append(consume template) end
 
-
-    _send(FrameBuilder.header(8, true, _streamid))
-    _send(FrameBuilder.data(data, _streamid))
-
-    /*
-    match (method, path)
-    | (let m: String, let p: String) => _out.print("#" + _streamid.string() +" " + m.upper() + " " + p)
-    else
-      for kv in _headerfields.values() do
-        (let n: String, let v: String) = kv
-        _out.print("Header: " + n + " => " + v)
-      end
+    let headers: List[(String, Stringable)] val = recover val
+      List[(String, Stringable)]
+      .> push((":status", U16(200)))
+      .> push(("content-length", data.size()))
+      .> push(("x-powered-by", "pony-h2"))
+      .> push(("set-cookie", "stupidshit=getrektson"))
     end
+
+    //_send(FrameBuilder.header(8, true, _streamid))
+    _send(FrameBuilder.header_list(headers, true, _streamid))
+    _send(FrameBuilder.data(data, _streamid))
     */
   
   fun _get_header(name: String): (String|None) =>
     for hf in _headerfields.values() do
-      (let n: String, let v: String) = hf
-      if n.eq(name) then return v end
+      if hf._1.eq(name) then return hf._2 end
     end
 
   

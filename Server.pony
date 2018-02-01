@@ -8,9 +8,11 @@ use "frames"
 class ServerListenNotify is TCPListenNotify
   let out: OutStream
   let sslctx: SSLContext
-  new create(os: OutStream, sslctx': SSLContext) =>
+  let _request_handler: RequestHandler val
+  new create(os: OutStream, sslctx': SSLContext, request_handler: RequestHandler val) =>
     out = os
     sslctx = sslctx'
+    _request_handler = request_handler
 
   fun ref listening(listener: TCPListener ref) =>
     out.print("Bound to " + NetAddressUtil.ip_port_str(listener.local_address()))
@@ -24,7 +26,7 @@ class ServerListenNotify is TCPListenNotify
 
     try
       let ssl = sslctx.server()?
-      recover SSLConnection(recover ServerSession(out) end, consume ssl) end
+      recover SSLConnection(recover ServerSession(out, _request_handler) end, consume ssl) end
     else
       out.print("Error setting up SSL listener")
       error
@@ -33,14 +35,16 @@ class ServerListenNotify is TCPListenNotify
 
 class ServerSession is TCPConnectionNotify
   let out: OutStream
+  let _request_handler: RequestHandler val
   let _frame_stream_parser: FrameStreamParser = FrameStreamParser
   let _dyn_headers: List[(String,String)] = List[(String, String)]
 
   let _streams: Map[U32, FrameStreamProcessor tag] = Map[U32, FrameStreamProcessor]
   var _scheduler: (FrameScheduler | None) = None
 
-  new create(os: OutStream) =>
+  new create(os: OutStream, request_handler: RequestHandler val) =>
     out = os
+    _request_handler = request_handler
 
   fun ref accepted(con: TCPConnection ref) =>
     out.print("Connection from " + NetAddressUtil.ip_port_str(con.remote_address()))
@@ -75,7 +79,7 @@ class ServerSession is TCPConnectionNotify
       try
         match _scheduler
         | let sched: FrameScheduler tag => 
-          _streams.insert(streamid, FrameStreamProcessor(sched, streamid, out))?
+          _streams.insert(streamid, FrameStreamProcessor(sched, streamid, _request_handler))?
         else error
         end
       else out.print("Failed, No scheduler set up yet!")

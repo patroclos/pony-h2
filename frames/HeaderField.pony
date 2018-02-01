@@ -1,4 +1,5 @@
 use "collections"
+use "buffered"
 
 // TODO non-static literal or literal-incrementally-indexed header fields
 primitive HeaderField
@@ -65,8 +66,36 @@ primitive HeaderField
       None
     end
   
-  fun encode_header(name: String val, value': Stringable val, dynamic_table: (List[(String, String)] val|None)): Array[U8] ref? =>
-    try return [indexed(get_index(name, value', dynamic_table) as U8)] end
+  fun encode_field_statically(name: String val, value': Stringable val): Array[U8] =>
+    let rv = recover trn Array[U8] end
+    rv.push(16) // 00010000 (literal never indexed)
+
+    let value = recover val value'.string() end
+
+    let len_name = name.size()
+    let len_value = value.size()
+
+    for b in HPack.encode_integer(len_name).values() do
+      rv.push(b)
+    end
+
+    for b in name.values() do
+      rv.push(b)
+    end
+
+    for b in HPack.encode_integer(len_value).values() do
+      rv.push(b)
+    end
+
+    for b in value.values() do
+      rv.push(b)
+    end
+
+    rv
+
+  
+  fun encode_field(name: String val, value': Stringable val, dynamic_table: (List[(String, String)] | None)): Array[U8]? =>
+    encode_field_statically(name, value')
     error
 
   fun num_static_headers(): USize => 61

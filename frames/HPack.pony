@@ -296,6 +296,35 @@ primitive HuffmanCode
     end
 
     consume val rv
+  
+  /*
+  fun encode(data: String box): String val =>
+    let buf: Array[U8] trn = recover trn Array[U8] end
+
+    var byte: U8 = 0
+    var bit: U8 = 0
+
+    for c in data.values() do
+      (let code:U32, let len: U8) = _HuffmanCode.symbol_data().apply(c)?
+      let code_bytes = Array[U8]
+        .> push(code and 0xff)
+        .> push(code.shr(8) and 0xff)
+        .> push(code.shr(16) and 0xff)
+        .> push(code.shr(24) and 0xff)
+      
+      var code_bit_index:U8 = 0
+      while code_bit_index < len do
+        // TODO push len bits
+        code_bit_index = code_bit_index + 8
+      end
+    end
+
+    if byte > 0 then
+      buf.push(byte)
+    end
+
+    recover val String.from_array(consume val buf) end
+    */
 
 primitive Huffman
 type StringEncoding is (Huffman | None )
@@ -329,7 +358,24 @@ primitive HPack
     until b.op_and(128) != 128 end
 
     value
+  
+  fun encode_integer(value: USize, start_bit_width: U8 = 8): Array[U8] =>
+    if value < USize.from[U8](1.shl(start_bit_width).sub(1)) then
+      return [as U8: U8.from[USize](value)]
+    end
 
+    let buffer = Array[U8]
+
+    buffer.push(1.shl(start_bit_width) - 1)
+
+    var remainder = value - USize.from[U8](1.shl(start_bit_width) - 1)
+
+    while remainder >= 128 do
+      buffer.push(U8.from[USize]((remainder % 128) + 128))
+      remainder = remainder / 128
+    end
+
+    buffer .> push(U8.from[USize](remainder))
 
   
   fun _read_string_meta(reader: Reader ref): (StringEncoding, USize)? =>
