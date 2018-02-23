@@ -24,8 +24,6 @@ actor FrameStreamProcessor
     _framewriter = consume writer
     _request_handler = request_handler
 
-    // initial settings frame
-    _framewriter.write(FrameBuilder.settings())
   
   be _send(frame: Frame val) =>
     _framewriter.write(frame)

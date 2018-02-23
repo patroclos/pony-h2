@@ -49,6 +49,7 @@ class ServerSession is TCPConnectionNotify
   fun ref accepted(con: TCPConnection ref) =>
     out.print("Connection from " + NetAddressUtil.ip_port_str(con.remote_address()))
     _scheduler = FrameScheduler(recover con end)
+    .> write(FrameBuilder.settings())
     None
   
   fun ref connect_failed(con: TCPConnection ref) =>
@@ -65,7 +66,7 @@ class ServerSession is TCPConnectionNotify
     try
       while _frame_stream_parser.has_next() do
         (let head: FrameHeader val, let payload: Array[U8] val) = _frame_stream_parser.next()?
-        //_dump_frameheader(head)
+        _dump_frameheader(head)
         _handle_frame(head, payload)
       end
     else
@@ -97,6 +98,10 @@ class ServerSession is TCPConnectionNotify
       for f in _dyn_headers.values() do fields.push(f) end
       let frame: HeadersFrame val = recover HeadersFrame(head, payload, consume box fields) end
       for f in frame.new_headers().values() do _dyn_headers.unshift(f) end
+
+      match frame.stream_dependency()
+      | let dep: U32 => out.print("Stream Dependency: " + dep.string())
+      end
 
 
       try

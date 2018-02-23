@@ -18,6 +18,9 @@ use "crypto"
 
 
 class HeadersFrame is Frame
+  var _exclusive: Bool = false
+  var _stream_dependency: (U32 | None) = None
+
   let _header: FrameHeader val
   let _payload: FramePayload val
   let _fields: List[(String, String)]
@@ -43,6 +46,9 @@ class HeadersFrame is Frame
   fun fields(): List[(String, String)] box =>
     _fields
   
+  fun exclusive(): Bool => _exclusive
+  fun stream_dependency(): (U32 | None) => _stream_dependency
+  
   fun ref _parse_fields() =>
     let rb: Reader ref = Reader
     rb.append(_payload)
@@ -54,8 +60,9 @@ class HeadersFrame is Frame
       let pad_length = if is_padded then rb.u8()? else 0 end
       
       let exclusive_and_stream_dependency = if has_priority then rb.u32_be()? else 0 end
-      let exclusive: Bool = (exclusive_and_stream_dependency and (1<<31)) != 0
-      let stream_dependency = exclusive_and_stream_dependency and 0x7fffffff
+      _exclusive = (exclusive_and_stream_dependency and (1<<31)) != 0
+      let stream_dep = exclusive_and_stream_dependency and 0x7fffffff
+      if stream_dep > 0 then _stream_dependency = stream_dep end
       let weight = if has_priority then rb.u8()? else 0 end
 
       while rb.size() > 0 do
@@ -75,7 +82,7 @@ class HeadersFrame is Frame
     try
       if index > HeaderField.static_headers().size() then
         let adjusted_index = index - HeaderField.num_static_headers() - 1
-        if adjusted_index < _new_dynamic.size() then 
+        if adjusted_index >= _new_dynamic.size() then 
           _dynamic_table.apply(adjusted_index)?
         else
           _new_dynamic.apply(adjusted_index)?
@@ -117,11 +124,11 @@ class HeadersFrame is Frame
 
 
         if incremental_index then
-          let value = try HPack.read_string(rb)? else error end
+          let value = HPack.read_string(rb)?
           _set_header(name, value)
           _new_dynamic.unshift((name,value))
         else
-          let value = try HPack.read_string(rb)? else error end
+          let value = HPack.read_string(rb)?
           _set_header(name,value)
         end
       end

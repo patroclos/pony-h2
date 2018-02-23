@@ -8,7 +8,7 @@ actor Main
       let auth = env.root as AmbientAuth
 
       let serve_dir = FilePath(auth, "./public", recover val FileCaps .> all() end)?
-      let handler = recover val TestHandler(serve_dir, env.out) end
+      let handler = recover val StaticRequestHandler(serve_dir) end
 
       let cert = FilePath(auth, "./certs/cert.pem")?
       let key = FilePath(auth, "./certs/key.pem")?
@@ -27,24 +27,16 @@ actor Main
     ctx.set_alpn_protos(recover iso ["h2"] end)
     consume ctx
 
-class val TestHandler
+class val StaticRequestHandler
   let _servedir: FilePath
-  let _out: OutStream
 
-  new create(servedir: FilePath, os: OutStream) =>
+  new create(servedir: FilePath) =>
     _servedir = servedir
-    _out = os
   
   fun on_request(req: Request val, res: Response trn): (Response val, Status) =>
     let status_code: Status = try
-      for hv in req.headers.values() do
-        _out.print("Header " + hv._1 + " => " + hv._2.string())
-      end
-
       let rpath = recover val String .> append(req.header(":path") as String) .> shift()? end
       let path = FilePath(_servedir, if rpath.size() == 0 then "index.html" else rpath end)?
-
-      _out.print(path.path)
 
       let file = OpenFile(path) as File
 
@@ -56,7 +48,7 @@ class val TestHandler
 
       res.body = consume val body
       200
-    else 500
+    else 404
     end
 
     (consume res, status_code)
