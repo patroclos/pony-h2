@@ -63,57 +63,6 @@ actor FrameStreamProcessor
     for frame in response(status).values() do
       _send(frame)
     end
-
-/*
-    let template = """
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>{0}</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-      </head>
-
-      <body>
-        <div class="container">
-          <h1>{1}</h1>
-          <p>A sample page delivered by pony-h2</p>
-        </div>
-      </body>
-    </html>
-    """.string()
-    .> replace("{0}", "pony-h2 sample")
-    .> replace("{1}", "Hello, World!")
-
-    let response = Response(_streamid)
-    response.headers = recover val
-      List[(String, Stringable)]
-      .> push(("x-powered-by", "pony-h2"))
-      .> push(("set-cookie", "bullshit=yes"))
-    end
-
-    response.body = (consume val template).array()
-
-    for frame in response(Status(200)).values() do
-      _send(frame)
-    end
-    */
-
-/*
-    let data: Array[U8] val = recover val Array[U8] .> append(consume template) end
-
-    let headers: List[(String, Stringable)] val = recover val
-      List[(String, Stringable)]
-      .> push((":status", U16(200)))
-      .> push(("content-length", data.size()))
-      .> push(("x-powered-by", "pony-h2"))
-      .> push(("set-cookie", "stupidshit=getrektson"))
-    end
-
-    //_send(FrameBuilder.header(8, true, _streamid))
-    _send(FrameBuilder.header_list(headers, true, _streamid))
-    _send(FrameBuilder.data(data, _streamid))
-    */
-  
   fun _get_header(name: String): (String|None) =>
     for hf in _headerfields.values() do
       if hf._1.eq(name) then return hf._2 end

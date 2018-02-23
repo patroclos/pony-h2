@@ -36,13 +36,13 @@ class box Response
 
     recover val [as Frame: headerFrame; dataFrame] end
 
-//interface Middleware
-//  fun on_request(req: Request iso, res: Response iso): (Request iso^, Response iso^)
-
 interface val RequestHandler
   fun on_request(req: Request val, res: Response trn): (Response val, Status)
 
 /*
+interface Middleware
+  fun on_request(req: Request iso, res: Response iso): (Request iso^, Response iso^)
+
 actor SomewhereOverTheRainbow
   let _writer: FrameWriter
   let _stream: U32

@@ -10,11 +10,4 @@ trait val Frame
   fun to_bytes(): Array[U8] val =>
     let head = header().to_bytes()
     let body = payload()
-    /*
-    recover Array[U8](head.size() + body.size())
-    .> append(head)
-    .> append(body)
-    end
-    */
-    //recover val Array[U8] end
     recover header().to_bytes() .> append(payload()) end
