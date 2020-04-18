@@ -10,13 +10,13 @@ primitive FrameHeaderFlags
 
   fun flags_match(flags: U8, matches: U8):Bool => (flags and matches) == matches
 
-class FrameHeader
+class val FrameHeader
   let length: USize
   let frametype: FrameType
   let flags: U8
   let stream_identifier: U32
 
-  new create(buf: Array[U8] iso)? =>
+  new val create(buf: Array[U8] iso)? =>
     let rb = Reader
     rb.append(consume buf)
 
@@ -28,13 +28,13 @@ class FrameHeader
     flags = rb.u8()?
     stream_identifier = rb.u32_be()? and (0xffffffff >> 1)
   
-  new from_values(length': USize, ft: FrameType, flags': U8, streamid: U32) =>
+  new val from_values(length': USize, ft: FrameType, flags': U8, streamid: U32) =>
     length = length'
     frametype = ft
     flags = flags'
     stream_identifier = streamid
   
-  new copy(from: FrameHeader box) =>
+  new box copy(from: FrameHeader box) =>
     length = from.length
     frametype = from.frametype
     flags = from.flags

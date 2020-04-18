@@ -2,10 +2,11 @@
 
 *everything subject to change*
 
-## SSL
+## Running the example
+compile (openssl 1.1.x required for alpn)
+`stable fetch && stable env ponyc -Dopenssl_1.1.x`
 
-This project uses an extended version of the official net/ssl package in order to support ALPN
-Building the project requires the alpn.c file to be compiled and linked as a library. (see Makefile)
+executing main will open a static server on port 8081 serving the ./public directory and using the selfsigned "localhost" certificate in ./certs
 
 ## Getting started
 

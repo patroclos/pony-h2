@@ -2,7 +2,7 @@ use "net"
 use "buffered"
 use "collections"
 
-use "ssl"
+use "net_ssl"
 use "frames"
 
 class ServerListenNotify is TCPListenNotify
@@ -22,8 +22,6 @@ class ServerListenNotify is TCPListenNotify
     None
 
   fun ref connected(listen: TCPListener ref): TCPConnectionNotify iso^? =>
-    let addr = listen.local_address().addr
-
     try
       let ssl = sslctx.server()?
       recover SSLConnection(recover ServerSession(out, _request_handler) end, consume ssl) end
@@ -80,7 +78,7 @@ class ServerSession is TCPConnectionNotify
       try
         match _scheduler
         | let sched: FrameScheduler tag => 
-          _streams.insert(streamid, FrameStreamProcessor(sched, streamid, _request_handler))?
+          _streams.insert(streamid, FrameStreamProcessor(sched, streamid, _request_handler))
         else error
         end
       else out.print("Failed, No scheduler set up yet!")

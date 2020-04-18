@@ -1,0 +1,9 @@
+h1 {
+    font-weight: normal;
+    font-size: 3em;
+    justify-self: center;
+}
+
+* {
+    background-color: firebrick;
+}

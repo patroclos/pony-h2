@@ -1,6 +1,6 @@
 use "files"
 use "net"
-use "ssl"
+use "net_ssl"
 
 actor Main
   new create(env: Env) =>
@@ -13,7 +13,7 @@ actor Main
       let cert = FilePath(auth, "./certs/cert.pem")?
       let key = FilePath(auth, "./certs/key.pem")?
       let ssl = recover val _get_sslctx(cert, key)? end
-      TCPListener(auth, recover ServerListenNotify(env.out, ssl, handler) end, "", "8080")
+      TCPListener(auth, recover ServerListenNotify(env.out, ssl, handler) end, "", "8081")
     else
       env.out.print("Failed to set up the server")
     end
@@ -24,7 +24,7 @@ actor Main
     ctx.set_cert(cert, key)?
     ctx.set_client_verify(false)
     ctx.set_server_verify(false)
-    ctx.set_alpn_protos(recover iso ["h2"] end)
+    ctx.alpn_set_resolver(ALPNStandardProtocolResolver(recover val ["h2"] end))
     consume ctx
 
 class val StaticRequestHandler

@@ -1,0 +1,12 @@
+{
+  "deps": [
+    {
+      "type": "github",
+      "repo": "ponylang/crypto"
+    },
+    {
+      "type": "github",
+      "repo": "ponylang/net_ssl"
+    }
+  ]
+}
